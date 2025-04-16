@@ -93,13 +93,7 @@ _SAMPLE_TEXT_CACHE = None
 
 
 def _initialize_table_info():
-    """
-    Builds the dynamic caches for:
-    - List of all table files (like "Filename.xlsx")
-    - A textual 'SCHEMA_TEXT' based on each file's columns/dtypes
-    - A textual 'SAMPLE_TEXT' with sample rows for each file.
-    We only do this once (store in global caches).
-    """
+
     global _TABLE_LIST_CACHE, _SCHEMA_TEXT_CACHE, _SAMPLE_TEXT_CACHE
 
     if _TABLE_LIST_CACHE is not None and _SCHEMA_TEXT_CACHE is not None and _SAMPLE_TEXT_CACHE is not None:
