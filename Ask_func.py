@@ -928,7 +928,7 @@ def agent_answer(user_question, user_tier=1):
     user_question_stripped = user_question.strip()
     if is_entirely_greeting_or_punc(user_question_stripped):
         if len(chat_history) < 4:
-            yield "Hello! I'm The CXQA AI Assistant. I'm here to help you. What would you like to know today?\n- To reset the conversation type 'restart chat'.\n- To generate Slides, Charts or Document, type 'export followed by your requirements."
+            yield "Hello! I'm The DGCL AI Assistant. I'm here to help you. What would you like to know today?\n- To reset the conversation type 'restart chat'.\n- To generate Slides, Charts or Document, type 'export followed by your requirements."
         else:
             yield "Hello! How may I assist you?\n- To reset the conversation type 'restart chat'.\n- To generate Slides, Charts or Document, type 'export followed by your requirements."
         return
