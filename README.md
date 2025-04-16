@@ -24,13 +24,17 @@
     - vector-174(...)sd3
 
 ## Directory Hierarchy Structure for Each Storage Account:
-Each Storage Account has a similar directory Hierarchy structure:
+
+Each Storage Account follows a similar directory hierarchy structure:
+
 <Storage_Account>
-  |__data
-     |__ Tabular
-     |  |__<Tables>
-     |__Textual
-     |  |__<Files>     <-------- (For Vectorizing)
-     |__RBAC
-       |__User_rbac.xlsx
-       |__File_rbac.xlsx           
+|__ data
+   |__ Tabular
+   |  |__ <Tables>
+   |__ Textual
+   |  |__ <Files>     <-------- (For Vectorizing)
+   |__ RBAC
+      |__ User_rbac.xlsx
+      |__ File_rbac.xlsx
+     
+
