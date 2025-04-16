@@ -1,8 +1,5 @@
 # Version 4b
-# call SOP has more efficient prompt & has a better layout:
-    # The logo and art images are centered
-    # Can manipulate the art image using ratios and scalinf
-    # The prompt is more effiecient and uses less tokens.
+
 
 
 import re
@@ -13,8 +10,7 @@ import threading
 import time
 from datetime import datetime
 
-#SOP imports######
-import fitz  # PyMuPDF
+import fitz
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -25,26 +21,10 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.utils import ImageReader
-
-##################################################
-# Azure Blob Storage
 from azure.storage.blob import BlobServiceClient
 
 
-##################################################
-# HELPER: Retry-Enabled OpenAI Call
-##################################################
 def openai_call_with_retry(endpoint, headers, payload, max_attempts=3, backoff=5, timeout=30):
-    """
-    Makes an OpenAI POST request, retrying up to `max_attempts` times if an error occurs.
-    :param endpoint: Full URL endpoint of the Azure OpenAI service
-    :param headers: Dict of HTTP headers (including 'api-key')
-    :param payload: JSON body for the request
-    :param max_attempts: Number of times to retry before giving up
-    :param backoff: Seconds to wait between retries
-    :param timeout: HTTP request timeout in seconds
-    :return: The JSON-decoded response or a dict with "error" if all attempts fail
-    """
     attempts = 0
     while attempts < max_attempts:
         try:
@@ -57,21 +37,9 @@ def openai_call_with_retry(endpoint, headers, payload, max_attempts=3, backoff=5
                 return {"error": f"API_ERROR: {str(e)}"}
             time.sleep(backoff)
 
-
-##################################################
-# HELPER: Upload File to Azure Blob
-##################################################
 def upload_to_azure_blob(blob_config, file_buffer, file_name_prefix):
-    """
-    Uploads a file buffer to Azure Blob Storage with a given prefix in the file name.
-    Automatically schedules deletion after 5 minutes (300 seconds).
-    :param blob_config: dict with account_url, sas_token, and container
-    :param file_buffer: io.BytesIO or similar buffer
-    :param file_name_prefix: e.g. "presentation", "chart", "document"
-    :return: download_url string
-    """
+
     try:
-        # Build the blob client
         blob_service = BlobServiceClient(
             account_url=blob_config["account_url"],
             credential=blob_config["sas_token"]
@@ -79,10 +47,8 @@ def upload_to_azure_blob(blob_config, file_buffer, file_name_prefix):
         container_client = blob_service.get_container_client(blob_config["container"])
         file_name = f"{file_name_prefix}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
         
-        # We'll guess the extension outside if needed, so add it when calling this helper if you like.
         blob_client = container_client.get_blob_client(file_name)
         
-        # Upload and generate URL
         blob_client.upload_blob(file_buffer, overwrite=True)
         download_url = (
             f"{blob_config['account_url']}/"
@@ -91,7 +57,6 @@ def upload_to_azure_blob(blob_config, file_buffer, file_name_prefix):
             f"{blob_config['sas_token']}"
         )
         
-        # Schedule auto-delete after 300 seconds
         threading.Timer(300, blob_client.delete_blob).start()
         return download_url
 
@@ -99,19 +64,12 @@ def upload_to_azure_blob(blob_config, file_buffer, file_name_prefix):
         raise Exception(f"Azure Blob Upload Error: {str(e)}")
 
 
-##################################################
-# Generate PowerPoint function
-##################################################
 def Call_PPT(latest_question, latest_answer, chat_history, instructions):
-    # PowerPoint imports
     from pptx import Presentation
     from pptx.util import Pt
     from pptx.dml.color import RGBColor as PPTRGBColor
     from pptx.enum.text import PP_ALIGN
-    
-    ##################################################
-    # (A) IMPROVED AZURE OPENAI CALL
-    ##################################################
+
     def generate_slide_content():
         chat_history_str = str(chat_history)
         
@@ -129,10 +87,10 @@ Data:
 - Answer: {latest_answer}
 - History: {chat_history_str}"""
 
-        endpoint = "https://cxqaazureaihub2358016269.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2025-01-01-preview"
+        endpoint = "<replace>"
         headers = {
             "Content-Type": "application/json",
-            "api-key": "Cv54PDKaIusK0dXkMvkBbSCgH982p1CjUwaTeKlir1NmB6tycSKMJQQJ99AKACYeBjFXJ3w3AAAAACOGllor"
+            "api-key": "<replace>"
         }
 
         payload = {
@@ -144,21 +102,16 @@ Data:
             "temperature": 0.3
         }
 
-        # Use our retry-enabled helper
         result_json = openai_call_with_retry(endpoint, headers, payload, max_attempts=3, backoff=5, timeout=30)
         if "error" in result_json:
-            return result_json["error"]  # e.g. "API_ERROR: <details>"
+            return result_json["error"] 
         try:
             return result_json['choices'][0]['message']['content'].strip()
         except Exception as e:
             return f"API_ERROR: {str(e)}"
 
-    ##################################################
-    # (B) ROBUST CONTENT HANDLING
-    ##################################################
     slides_text = generate_slide_content()
     
-    # Handle error cases
     if slides_text.startswith("API_ERROR:"):
         return f"OpenAI API Error: {slides_text[10:]}"
     if "NOT_ENOUGH_INFO" in slides_text:
@@ -166,9 +119,6 @@ Data:
     if len(slides_text) < 20:
         return "Error: Generated content too short or invalid"
 
-    ##################################################
-    # (C) SLIDE GENERATION WITH DESIGN
-    ##################################################
     try:
         prs = Presentation()
 
@@ -207,24 +157,19 @@ Data:
                     p.font.size = Pt(24)
                     p.space_after = Pt(12)
 
-        ##################################################
-        # (D) FILE UPLOAD
-        ##################################################
+
         blob_config = {
-            "account_url": "https://cxqaazureaihub8779474245.blob.core.windows.net",
-            "sas_token": "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-11-21T02:02:26Z&st=2024-11-20T18:02:26Z&spr=https&sig=YfZEUMeqiuBiG7le2JfaaZf%2FW6t8ZW75yCsFM6nUmUw%3D",
-            "container": "5d74a98c-1fc6-4567-8545-2632b489bd0b-azureml-blobstore"
+            "account_url": "<replace>",
+            "sas_token": "<replace>",
+            "container": "<replace>"
         }
 
         ppt_buffer = io.BytesIO()
         prs.save(ppt_buffer)
         ppt_buffer.seek(0)
 
-        # Reuse our helper to upload
         file_name_prefix = f"presentation_{datetime.now().strftime('%Y%m%d%H%M%S')}.pptx"
-        # We'll just do the entire final name in the prefix to keep old naming style:
-        # Or we can simplify. Let's keep it exactly the same as before for compatibility.
-        # So we won't use a . in the prefix. We'll do the same logic as prior lines:
+
         blob_service = BlobServiceClient(
             account_url=blob_config["account_url"],
             credential=blob_config["sas_token"]
@@ -241,10 +186,8 @@ Data:
             f"{blob_config['sas_token']}"
         )
         
-        # Auto-delete after 5 minutes
         threading.Timer(300, blob_client.delete_blob).start()
 
-        # SINGLE-LINE RETURN
         export_type = "slides"
         return f"Here is your generated {export_type}:\n{download_url}"
 
@@ -252,9 +195,6 @@ Data:
         return f"Presentation Generation Error: {str(e)}"
 
 
-##################################################
-# Generate Charts function
-##################################################
 def Call_CHART(latest_question, latest_answer, chat_history, instructions):
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MaxNLocator
@@ -264,7 +204,7 @@ def Call_CHART(latest_question, latest_answer, chat_history, instructions):
     import json
     import io
 
-    # Chart color palette for aesthetic purposes
+    # Chart color palette
     CHART_COLORS = [
         (193/255, 114/255, 80/255),   # Reddish
         (85/255, 20/255, 45/255),     # Dark Wine
@@ -273,9 +213,7 @@ def Call_CHART(latest_question, latest_answer, chat_history, instructions):
         (254/255, 200/255, 65/255)    # Yellow
     ]
 
-    ##################################################
-    # (A) Improved Azure OpenAI Call for Chart Data
-    ##################################################
+
     def generate_chart_data():
         chat_history_str = str(chat_history)
         
@@ -327,22 +265,17 @@ Data:
         except Exception as e:
             return f"API_ERROR: {str(e)}"
 
-    ##################################################
-    # (B) Chart Generation Logic - Robust Handling
-    ##################################################
     def create_chart_image(chart_data):
         try:
             plt.rcParams['axes.titleweight'] = 'bold'
             plt.rcParams['axes.titlesize'] = 12
 
-            # Check if the necessary keys exist
             if not all(key in chart_data for key in ['chart_type', 'title', 'categories', 'series']):
                 raise ValueError("Missing required keys in chart data. Ensure chart_type, title, categories, and series are present.")
             
             fig, ax = plt.subplots(figsize=(8, 4.5))
             color_cycle = CHART_COLORS
 
-            # Determine chart type and plot accordingly
             if chart_data['chart_type'] in ['bar', 'column']:
                 handle = ax.bar
             elif chart_data['chart_type'] == 'line':
@@ -350,7 +283,6 @@ Data:
             else:
                 raise ValueError(f"Unsupported chart type: {chart_data['chart_type']}")
 
-            # Plot each series
             for idx, series in enumerate(chart_data['series']):
                 color = color_cycle[idx % len(color_cycle)]
                 if chart_data['chart_type'] in ['bar', 'column']:
@@ -361,7 +293,7 @@ Data:
                         color=color,
                         width=0.6
                     )
-                else:  # line chart
+                else: 
                     handle(
                         chart_data['categories'],
                         series['values'],
@@ -371,14 +303,12 @@ Data:
                         linewidth=2.5
                     )
 
-            # Finalize chart appearance
             ax.set_title(chart_data['title'])
             ax.yaxis.set_major_locator(MaxNLocator(integer=True))
             plt.xticks(rotation=45, ha='right')
             plt.legend()
             plt.tight_layout()
 
-            # Save chart to image buffer
             img_buffer = io.BytesIO()
             plt.savefig(img_buffer, format='png', dpi=150)
             img_buffer.seek(0)
@@ -389,9 +319,6 @@ Data:
             print(f"Chart Error: {str(e)}")
             return None
 
-    ##################################################
-    # (C) Main Processing Flow for Chart Generation
-    ##################################################
     try:
         chart_response = generate_chart_data()
 
@@ -414,19 +341,16 @@ Data:
         except Exception as e:
             return f"Invalid chart data format: {str(e)}"
 
-        # Create chart image
         img_buffer = create_chart_image(chart_data)
         if not img_buffer:
             return "Failed to generate chart from data"
 
-        # Create Word document to include the chart
         doc = Document()
         doc.add_heading(chart_data['title'], level=1)
         doc.add_picture(img_buffer, width=Inches(6))
         para = doc.add_paragraph("Source: Generated from provided data")
         para.alignment = WD_PARAGRAPH_ALIGNMENT.RIGHT
 
-        # Upload to Azure Blob Storage
         blob_config = {
             "account_url": "https://cxqaazureaihub8779474245.blob.core.windows.net",
             "sas_token": "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupiytfx&se=2030-11-21T02:02:26Z&st=2024-11-20T18:02:26Z&spr=https&sig=YfZEUMeqiuBiG7le2JfaaZf%2FW6t8ZW75yCsFM6nUmUw%3D",
@@ -453,7 +377,6 @@ Data:
             f"{blob_client.blob_name}?{blob_config['sas_token']}"
         )
 
-        # Automatically delete the blob after 5 minutes
         threading.Timer(300, blob_client.delete_blob).start()
 
         return f"Here is your generated chart:\n{download_url}"
@@ -462,9 +385,7 @@ Data:
         return f"Chart Generation Error: {str(e)}"
 
 
-##################################################
-# Generate Documents function
-##################################################
+
 def Call_DOC(latest_question, latest_answer, chat_history, instructions_doc):
     from docx import Document
     from docx.shared import Pt as DocxPt, Inches, RGBColor as DocxRGBColor
@@ -513,7 +434,6 @@ Data:
         except Exception as e:
             return f"API_ERROR: {str(e)}"
 
-    # Get the doc text
     doc_text = generate_doc_content()
     if doc_text.startswith("API_ERROR:"):
         return f"OpenAI API Error: {doc_text[10:]}"
@@ -542,7 +462,6 @@ Data:
             shd = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{BG_COLOR_HEX}"/>')
             sectPr.append(shd)
 
-        # Split into sections
         for section_content in doc_text.split('\n\n'):
             lines = [line.strip() for line in section_content.split('\n') if line.strip()]
             if not lines:
@@ -555,7 +474,6 @@ Data:
             heading_run.font.size = TITLE_SIZE
             heading_run.bold = True
 
-            # Bullets
             if len(lines) > 1:
                 for bullet in lines[1:]:
                     para = doc.add_paragraph(style='ListBullet')
@@ -594,7 +512,6 @@ Data:
 
         threading.Timer(300, blob_client.delete_blob).start()
 
-        # SINGLE-LINE RETURN
         export_type = "Document"
         return f"Here is your generated {export_type}:\n{download_url}"
 
@@ -603,26 +520,6 @@ Data:
 
 
 def Call_SOP(latest_question, latest_answer, chat_history, instructions):
-    """
-    Generates a Standard Operating Procedure (SOP) PDF by:
-      1) Calling GPT to get JSON data with these fields:
-         title, table_of_contents, overview, scope, policy, provisions, definitions,
-         process_responsibilities, process, procedures, related_docs, sop_form, sop_log.
-      2) Parsing that JSON and converting each field into a normal SOP layout:
-         - Front page with a logo, metadata, and "Standard Operating Procedure Document"
-         - Then each SOP section (overview, scope, etc.) as headings/paragraphs
-      3) Uploading the PDF to Azure Blob Storage and returning the final download URL.
-
-    Parameters:
-    - latest_question: The user's prompt or question
-    - latest_answer: Any existing 'answer' from conversation or prior steps
-    - chat_history: The conversation history
-    - instructions: Additional user instructions (e.g., "We want an SOP...")
-
-    Returns:
-      A string with either an error or
-      "Here is your generated SOP:\n<URL>" (the Azure Blob URL).
-    """
 
     import re
     import json
@@ -644,15 +541,7 @@ def Call_SOP(latest_question, latest_answer, chat_history, instructions):
     # (A) GPT Call: Return ONLY valid JSON with SOP fields
     ##################################################
     def generate_sop_content():
-        """
-        Calls Azure OpenAI with a prompt that instructs it to produce
-        a JSON object. The JSON object must have:
-          title, table_of_contents, overview, scope, policy, provisions,
-          definitions, process_responsibilities, process, procedures,
-          related_docs, sop_form, sop_log
 
-        If GPT returns insufficient data or an error, we handle it.
-        """
         chat_history_str = str(chat_history)
 
         sop_prompt = f"""
@@ -728,13 +617,9 @@ User_description:
             return f"API_ERROR: {str(e)}"
 
 
-    ##################################################
-    # (B) Parse JSON and build PDF (front page + SOP sections)
-    ##################################################
-    # 1) Get raw content from GPT (should be JSON)
+
     raw_json = generate_sop_content()
 
-    # Check for errors or insufficient data
     if raw_json.startswith("API_ERROR:"):
         return f"OpenAI API Error: {raw_json[10:]}"
     if "NOT_ENOUGH_INFO" in raw_json.upper():
@@ -748,8 +633,7 @@ User_description:
     except json.JSONDecodeError as e:
         return f"Error: GPT output wasn't valid JSON. Details: {str(e)}"
 
-    # 3) Prepare our data fields from the JSON
-    # We'll call them with .get() so if something is missing, it's blank.
+  
     sop_title       = sop_data.get("title", "Untitled SOP")
     toc_text        = sop_data.get("table_of_contents", "")
     overview_text   = sop_data.get("overview", "")
@@ -764,7 +648,6 @@ User_description:
     sop_form        = sop_data.get("sop_form", "")
     sop_log         = sop_data.get("sop_log", "")
 
-    # 4) Now let's build a PDF with a front page + subsequent sections
     try:
         import io
         from reportlab.pdfgen import canvas
@@ -780,7 +663,6 @@ User_description:
         c = canvas.Canvas(buffer_front, pagesize=A4)
         page_width, page_height = A4
 
-        # Download images from Azure
         blob_config = {
             "account_url": "https://cxqaazureaihub8779474245.blob.core.windows.net",
             "sas_token": (
@@ -803,7 +685,7 @@ User_description:
             img_data.seek(0)
             return img_data
 
-        # Attempt to fetch the same logo & art
+     
         try:
             logo_img = ImageReader(fetch_image("UI/2024-11-20_142337_UTC/cxqa_data/export-resources/logo.png"))
             art_img  = ImageReader(fetch_image("UI/2024-11-20_142337_UTC/cxqa_data/export-resources/art.png"))
@@ -826,15 +708,10 @@ User_description:
         if art_img:
             original_width, original_height = art_img.getSize()  
             ratio = 0.8
-            # double the original size
-            # ratio = 1.0  # original size
-            # ratio = 0.5  # half size, etc.
-    
-            # 3) Compute scaled dimensions.
+       
             scaled_width = original_width * ratio
             scaled_height = original_height * ratio
             
-            # 4) Compute X/Y so it's centered horizontally, for example at Y=0.
             x_pos = (page_width - scaled_width) / 2
             y_pos = 0
             
@@ -844,14 +721,13 @@ User_description:
                 y=y_pos,
                 width=scaled_width,
                 height=scaled_height,
-                preserveAspectRatio=False,  # you can set False now because we did the math
+                preserveAspectRatio=False,  # keep false, already did the math
                 mask='auto'
             )
 
 
 
         # Title
-        # Main Title (bold black)
         c.setFont("Helvetica-Bold", 16)
         c.setFillColor(colors.black)
         c.drawCentredString(page_width/2, page_height - 230, sop_title)
@@ -862,7 +738,7 @@ User_description:
         c.drawCentredString(page_width/2, page_height - 250, "Standard Operating Procedure Document")
 
 
-        # Some doc metadata
+        # doc metadata
         c.setFont("Helvetica", 10)
         meta_y = page_height - 310
         meta_lines = [
@@ -882,7 +758,6 @@ User_description:
         c.showPage()
 
         # MAIN SECTIONS
-        # We'll do a function to add each chunk
         style_heading = ParagraphStyle(
             'heading',
             fontName='Helvetica-Bold',
@@ -899,23 +774,18 @@ User_description:
         )
 
         def add_section(title, content, story):
-            # If content is empty, skip
             if not content:
                 return
             story.append(Paragraph(title, style_heading))
             if isinstance(content, list):
-                # if user put a bullet list for "provisions"
                 for item in content:
                     story.append(Paragraph(f"- {item}", style_text))
             elif isinstance(content, dict):
-                # we might have a dictionary for process_responsibilities
                 for k,v in content.items():
-                    # if v is a list/dict, we can convert to string or do further logic
                     if isinstance(v, (list, dict)):
                         v = json.dumps(v, indent=2)
                     story.append(Paragraph(f"{k}: {v}", style_text))
             else:
-                # Just treat content as string
                 lines = str(content).split("\n")
                 for line in lines:
                     line = line.strip()
@@ -923,7 +793,6 @@ User_description:
                         story.append(Paragraph(line, style_text))
             story.append(Spacer(1,12))
 
-        # We'll store in a story for a second PDF:
         buffer_content = io.BytesIO()
         doc_story = []
 
@@ -957,7 +826,6 @@ User_description:
 
         c.save()
 
-        # Merge front page + main content
         buffer_content.seek(0)
         front_pdf = fitz.open(stream=buffer_front.getvalue(), filetype="pdf")
         content_pdf = fitz.open(stream=buffer_content.getvalue(), filetype="pdf")
@@ -967,7 +835,6 @@ User_description:
         front_pdf.save(final_output)
         final_output.seek(0)
 
-        # Upload to Azure
         blob_service = BlobServiceClient(
             account_url=blob_config["account_url"],
             credential=blob_config["sas_token"]
